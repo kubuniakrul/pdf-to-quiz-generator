@@ -1,283 +1,263 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
+import { experimental_useObject } from "ai/react";
+import { questionsSchema } from "@/lib/schemas";
+import { z } from "zod";
+import { toast } from "sonner";
+import { FileUp, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import {
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  X,
-  RefreshCw,
-  FileText,
-} from "lucide-react";
-import QuizScore from "./score";
-import QuizReview from "./quiz-overview";
-import { Question } from "@/lib/schemas";
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import Quiz from "@/components/quiz";
+import { Link } from "@/components/ui/link";
+import NextLink from "next/link";
+import { generateQuizTitle } from "./actions";
+import { AnimatePresence, motion } from "framer-motion";
+import { VercelIcon, GitIcon } from "@/components/icons";
 
-type QuizProps = {
-  questions: Question[];
-  clearPDF: () => void;
-  title: string;
-};
+const TOTAL_QUESTIONS = 20; // Added constant for easy changes
 
-const QuestionCard: React.FC<{
-  question: Question;
-  selectedAnswer: number | null;
-  onSelectAnswer: (answer: number) => void;
-  showFeedback: boolean; // Added: control when to show feedback
-}> = ({ question, selectedAnswer, onSelectAnswer, showFeedback }) => {
-  const answerLabels = ["A", "B", "C", "D"];
+export default function ChatWithFiles() {
+  const [files, setFiles] = useState<File[]>([]);
+  const [questions, setQuestions] = useState<z.infer<typeof questionsSchema>>(
+    [],
+  );
+  const [isDragging, setIsDragging] = useState(false);
+  const [title, setTitle] = useState<string>();
+
+  const {
+    submit,
+    object: partialQuestions,
+    isLoading,
+  } = experimental_useObject({
+    api: "/api/generate-quiz",
+    schema: questionsSchema,
+    initialValue: undefined,
+    onError: (error) => {
+      toast.error("Failed to generate quiz. Please try again.");
+      setFiles([]);
+    },
+    onFinish: ({ object }) => {
+      setQuestions(object ?? []);
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    if (isSafari && isDragging) {
+      toast.error(
+        "Safari does not support drag & drop. Please use the file picker.",
+      );
+      return;
+    }
+
+    const selectedFiles = Array.from(e.target.files || []);
+    const validFiles = selectedFiles.filter(
+      (file) => file.type === "application/pdf" && file.size <= 5 * 1024 * 1024,
+    );
+    console.log(validFiles);
+
+    if (validFiles.length !== selectedFiles.length) {
+      toast.error("Only PDF files under 5MB are allowed.");
+    }
+
+    setFiles(validFiles);
+  };
+
+  const encodeFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleSubmitWithFiles = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const encodedFiles = await Promise.all(
+      files.map(async (file) => ({
+        name: file.name,
+        type: file.type,
+        data: await encodeFileAsBase64(file),
+      })),
+    );
+    submit({ files: encodedFiles });
+    const generatedTitle = await generateQuizTitle(encodedFiles[0].name);
+    setTitle(generatedTitle);
+  };
+
+  const clearPDF = () => {
+    setFiles([]);
+    setQuestions([]);
+  };
+
+  // FIXED: Changed from /4 to /TOTAL_QUESTIONS
+  const progress = partialQuestions ? (partialQuestions.length / TOTAL_QUESTIONS) * 100 : 0;
+
+  // FIXED: Changed from === 4 to === TOTAL_QUESTIONS
+  if (questions.length === TOTAL_QUESTIONS) {
+    return (
+      <Quiz title={title ?? "Quiz"} questions={questions} clearPDF={clearPDF} />
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold leading-tight">
-        {question.question}
-      </h2>
-      <div className="grid grid-cols-1 gap-4">
-        {question.options.map((option, index) => {
-          const isSelected = selectedAnswer === index;
-          const isCorrect = index === question.correctAnswer;
-          const isIncorrect = showFeedback && isSelected && !isCorrect;
-          
-          return (
-            <Button
-              key={index}
-              variant={isSelected ? "secondary" : "outline"}
-              disabled={showFeedback} // Disable after answering
-              className={`h-auto py-6 px-4 justify-start text-left whitespace-normal transition-all ${
-                showFeedback && isCorrect
-                  ? "bg-green-600 hover:bg-green-700 text-white border-green-600"
-                  : isIncorrect
-                    ? "bg-red-600 hover:bg-red-700 text-white border-red-600"
-                    : ""
-              }`}
-              onClick={() => onSelectAnswer(index)}
+    <div
+      className="min-h-[100dvh] w-full flex justify-center"
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragExit={() => setIsDragging(false)}
+      onDragEnd={() => setIsDragging(false)}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        console.log(e.dataTransfer.files);
+        handleFileChange({
+          target: { files: e.dataTransfer.files },
+        } as React.ChangeEvent<HTMLInputElement>);
+      }}
+    >
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            className="fixed pointer-events-none dark:bg-zinc-900/90 h-dvh w-dvw z-10 justify-center items-center flex flex-col gap-1 bg-zinc-100/90"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div>Drag and drop files here</div>
+            <div className="text-sm dark:text-zinc-400 text-zinc-500">
+              {"(PDFs only)"}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <Card className="w-full max-w-md h-full border-0 sm:border sm:h-fit mt-12">
+        <CardHeader className="text-center space-y-6">
+          <div className="mx-auto flex items-center justify-center space-x-2 text-muted-foreground">
+            <div className="rounded-full bg-primary/10 p-2">
+              <FileUp className="h-6 w-6" />
+            </div>
+            <Plus className="h-4 w-4" />
+            <div className="rounded-full bg-primary/10 p-2">
+              <Loader2 className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <CardTitle className="text-2xl font-bold">
+              PDF Quiz Generator
+            </CardTitle>
+            <CardDescription className="text-base">
+              Upload a PDF to generate an interactive quiz based on its content
+              using the <Link href="https://sdk.vercel.ai">AI SDK</Link> and{" "}
+              <Link href="https://sdk.vercel.ai/providers/ai-sdk-providers/google-generative-ai">
+                Google&apos;s Gemini Pro
+              </Link>
+              .
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmitWithFiles} className="space-y-4">
+            <div
+              className={`relative flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 transition-colors hover:border-muted-foreground/50`}
             >
-              <span className="text-lg font-medium mr-4 shrink-0">
-                {answerLabels[index]}
-              </span>
-              <span className="flex-grow">{option}</span>
-              {showFeedback && isCorrect && (
-                <Check className="ml-2 shrink-0 text-white" size={24} />
-              )}
-              {isIncorrect && (
-                <X className="ml-2 shrink-0 text-white" size={24} />
+              <input
+                type="file"
+                onChange={handleFileChange}
+                accept="application/pdf"
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <FileUp className="h-8 w-8 mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground text-center">
+                {files.length > 0 ? (
+                  <span className="font-medium text-foreground">
+                    {files[0].name}
+                  </span>
+                ) : (
+                  <span>Drop your PDF here or click to browse.</span>
+                )}
+              </p>
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={files.length === 0}
+            >
+              {isLoading ? (
+                <span className="flex items-center space-x-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Generating Quiz...</span>
+                </span>
+              ) : (
+                "Generate Quiz"
               )}
             </Button>
-          );
-        })}
-      </div>
-
-      {/* INSTANT FEEDBACK - Shows immediately after selecting */}
-      {showFeedback && selectedAnswer !== null && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`p-4 rounded-lg border-2 ${
-            selectedAnswer === question.correctAnswer
-              ? "bg-green-50 dark:bg-green-900/20 border-green-500"
-              : "bg-red-50 dark:bg-red-900/20 border-red-500"
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            {selectedAnswer === question.correctAnswer ? (
-              <Check className="h-6 w-6 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
-            ) : (
-              <X className="h-6 w-6 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-            )}
-            <div className="space-y-2">
-              <p className={`font-semibold text-lg ${
-                selectedAnswer === question.correctAnswer
-                  ? "text-green-700 dark:text-green-300"
-                  : "text-red-700 dark:text-red-300"
-              }`}>
-                {selectedAnswer === question.correctAnswer
-                  ? "Correct!"
-                  : "Incorrect"}
-              </p>
-              {question.explanation && (
-                <p className="text-sm text-muted-foreground">
-                  {question.explanation}
-                </p>
-              )}
-              {selectedAnswer !== question.correctAnswer && (
-                <p className="text-sm font-medium">
-                  Correct answer: <span className="text-green-600 dark:text-green-400">
-                    {answerLabels[question.correctAnswer]}. {question.options[question.correctAnswer]}
-                  </span>
-                </p>
-              )}
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </div>
-  );
-};
-
-export default function Quiz({
-  questions,
-  clearPDF,
-  title = "Quiz",
-}: QuizProps) {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<(number | null)[]>(
-    Array(questions.length).fill(null)
-  );
-  const [showFeedback, setShowFeedback] = useState(false); // Added: track feedback state
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [score, setScore] = useState<number | null>(null);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setProgress(((currentQuestionIndex + 1) / questions.length) * 100);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [currentQuestionIndex, questions.length]);
-
-  const handleSelectAnswer = (answer: number) => {
-    if (!showFeedback) { // Only allow selection if feedback not shown yet
-      const newAnswers = [...answers];
-      newAnswers[currentQuestionIndex] = answer;
-      setAnswers(newAnswers);
-      setShowFeedback(true); // Show feedback immediately
-    }
-  };
-
-  const handleNextQuestion = () => {
-    setShowFeedback(false); // Hide feedback for next question
-    
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      handleSubmit();
-    }
-  };
-
-  const handlePreviousQuestion = () => {
-    if (currentQuestionIndex > 0) {
-      setShowFeedback(false); // Hide feedback when going back
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
-      
-      // If previous question was answered, show its feedback
-      if (answers[currentQuestionIndex - 1] !== null) {
-        setTimeout(() => setShowFeedback(true), 100);
-      }
-    }
-  };
-
-  const handleSubmit = () => {
-    setIsSubmitted(true);
-    const correctAnswers = questions.reduce((acc, question, index) => {
-      return acc + (question.correctAnswer === answers[index] ? 1 : 0);
-    }, 0);
-    setScore(correctAnswers);
-  };
-
-  const handleReset = () => {
-    setAnswers(Array(questions.length).fill(null));
-    setIsSubmitted(false);
-    setScore(null);
-    setCurrentQuestionIndex(0);
-    setProgress(0);
-    setShowFeedback(false);
-  };
-
-  const currentQuestion = questions[currentQuestionIndex];
-  const answeredCount = answers.filter(a => a !== null).length;
-
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <main className="container mx-auto px-4 py-12 max-w-4xl">
-        <h1 className="text-3xl font-bold mb-8 text-center text-foreground">
-          {title}
-        </h1>
-        <div className="relative">
-          {!isSubmitted && (
-            <div className="mb-8 space-y-2">
+          </form>
+        </CardContent>
+        {isLoading && (
+          <CardFooter className="flex flex-col space-y-4">
+            <div className="w-full space-y-1">
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Progress</span>
+                <span>{Math.round(progress)}%</span>
+              </div>
               <Progress value={progress} className="h-2" />
-              <p className="text-sm text-muted-foreground text-center">
-                {answeredCount} of {questions.length} questions answered
-              </p>
             </div>
-          )}
-          <div className="min-h-[400px]">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={isSubmitted ? "results" : currentQuestionIndex}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-              >
-                {!isSubmitted ? (
-                  <div className="space-y-8">
-                    <QuestionCard
-                      question={currentQuestion}
-                      selectedAnswer={answers[currentQuestionIndex]}
-                      onSelectAnswer={handleSelectAnswer}
-                      showFeedback={showFeedback}
-                    />
-                    <div className="flex justify-between items-center pt-4">
-                      <Button
-                        onClick={handlePreviousQuestion}
-                        disabled={currentQuestionIndex === 0}
-                        variant="ghost"
-                      >
-                        <ChevronLeft className="mr-2 h-4 w-4" /> Previous
-                      </Button>
-                      <span className="text-sm font-medium">
-                        Question {currentQuestionIndex + 1} of {questions.length}
-                      </span>
-                      <Button
-                        onClick={handleNextQuestion}
-                        disabled={!showFeedback} // Only enable after answering
-                        variant="ghost"
-                      >
-                        {currentQuestionIndex === questions.length - 1
-                          ? "Submit"
-                          : "Next"}{" "}
-                        <ChevronRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-8">
-                    <QuizScore
-                      correctAnswers={score ?? 0}
-                      totalQuestions={questions.length}
-                    />
-                    <div className="space-y-12">
-                      <QuizReview 
-                        questions={questions} 
-                        userAnswers={answers.map(a => a ?? -1)}
-                      />
-                    </div>
-                    <div className="flex justify-center space-x-4 pt-4">
-                      <Button
-                        onClick={handleReset}
-                        variant="outline"
-                        className="bg-muted hover:bg-muted/80 w-full"
-                      >
-                        <RefreshCw className="mr-2 h-4 w-4" /> Reset Quiz
-                      </Button>
-                      <Button
-                        onClick={clearPDF}
-                        className="bg-primary hover:bg-primary/90 w-full"
-                      >
-                        <FileText className="mr-2 h-4 w-4" /> Try Another PDF
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </div>
-      </main>
+            <div className="w-full space-y-2">
+              <div className="grid grid-cols-6 sm:grid-cols-4 items-center space-x-2 text-sm">
+                <div
+                  className={`h-2 w-2 rounded-full ${
+                    isLoading ? "bg-yellow-500/50 animate-pulse" : "bg-muted"
+                  }`}
+                />
+                <span className="text-muted-foreground text-center col-span-4 sm:col-span-2">
+                  {/* FIXED: Changed "of 4" to "of 20" */}
+                  {partialQuestions
+                    ? `Generating question ${partialQuestions.length + 1} of ${TOTAL_QUESTIONS}`
+                    : "Analyzing PDF content"}
+                </span>
+              </div>
+            </div>
+          </CardFooter>
+        )}
+      </Card>
+      <motion.div
+        className="flex flex-row gap-4 items-center justify-between fixed bottom-6 text-xs "
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+      >
+        <NextLink
+          target="_blank"
+          href="https://github.com/vercel-labs/ai-sdk-preview-pdf-support"
+          className="flex flex-row gap-2 items-center border px-2 py-1.5 rounded-md hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800"
+        >
+          <GitIcon />
+          View Source Code
+        </NextLink>
+
+        <NextLink
+          target="_blank"
+          href="https://vercel.com/templates/next.js/ai-quiz-generator"
+          className="flex flex-row gap-2 items-center bg-zinc-900 px-2 py-1.5 rounded-md text-zinc-50 hover:bg-zinc-950 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-50"
+        >
+          <VercelIcon size={14} />
+          Deploy with Vercel
+        </NextLink>
+      </motion.div>
     </div>
   );
 }
