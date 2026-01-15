@@ -23,6 +23,8 @@ import { generateQuizTitle } from "./actions";
 import { AnimatePresence, motion } from "framer-motion";
 import { VercelIcon, GitIcon } from "@/components/icons";
 
+const TOTAL_QUESTIONS = 20; // Added constant for easy changes
+
 export default function ChatWithFiles() {
   const [files, setFiles] = useState<File[]>([]);
   const [questions, setQuestions] = useState<z.infer<typeof questionsSchema>>(
@@ -99,9 +101,11 @@ export default function ChatWithFiles() {
     setQuestions([]);
   };
 
-  const progress = partialQuestions ? (partialQuestions.length / 4) * 100 : 0;
+  // FIXED: Changed from /4 to /TOTAL_QUESTIONS
+  const progress = partialQuestions ? (partialQuestions.length / TOTAL_QUESTIONS) * 100 : 0;
 
-  if (questions.length === 4) {
+  // FIXED: Changed from === 4 to === TOTAL_QUESTIONS
+  if (questions.length === TOTAL_QUESTIONS) {
     return (
       <Quiz title={title ?? "Quiz"} questions={questions} clearPDF={clearPDF} />
     );
@@ -221,8 +225,9 @@ export default function ChatWithFiles() {
                   }`}
                 />
                 <span className="text-muted-foreground text-center col-span-4 sm:col-span-2">
+                  {/* FIXED: Changed "of 4" to "of 20" */}
                   {partialQuestions
-                    ? `Generating question ${partialQuestions.length + 1} of 4`
+                    ? `Generating question ${partialQuestions.length + 1} of ${TOTAL_QUESTIONS}`
                     : "Analyzing PDF content"}
                 </span>
               </div>
