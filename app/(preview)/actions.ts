@@ -64,7 +64,6 @@ Requirements:
 - Mix difficulty levels (easy, medium, hard)
 - Ensure correctAnswer index matches the correct option (0-3)
 - Keep questions clear and concise
-- Use the same type of language that is in the document
 - Provide helpful explanations
 - Each option should be roughly equal in length.
 
