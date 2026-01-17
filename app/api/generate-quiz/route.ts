@@ -7,7 +7,7 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   const { files } = await req.json();
   const firstFile = files[0].data;
-  const fileType = files[0].type; // Get the file type dynamically
+  const fileType = files[0].type;
 
   const result = streamObject({
     model: google("gemini-2.5-flash"),
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
           {
             type: "file",
             data: firstFile,
-            mimeType: fileType, // Changed: now uses dynamic file type (PDF or PPTX)
+            mimeType: fileType,
           },
         ],
       },
@@ -47,4 +47,5 @@ export async function POST(req: Request) {
     },
   });
 
-  return result.toTextStreamResp
+  return result.toTextStreamResponse();
+}
