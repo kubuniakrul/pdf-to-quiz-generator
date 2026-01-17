@@ -2,11 +2,12 @@ import { questionSchema, questionsSchema } from "@/lib/schemas";
 import { google } from "@ai-sdk/google";
 import { streamObject } from "ai";
 
-export const maxDuration = 120; // Good - 120 seconds is enough for 20 questions
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const { files } = await req.json();
   const firstFile = files[0].data;
+  const fileType = files[0].type; // Get the file type dynamically
 
   const result = streamObject({
     model: google("gemini-2.5-flash"),
@@ -26,26 +27,24 @@ export async function POST(req: Request) {
           {
             type: "file",
             data: firstFile,
-            mimeType: "application/pdf",
+            mimeType: fileType, // Changed: now uses dynamic file type (PDF or PPTX)
           },
         ],
       },
     ],
     schema: questionSchema,
     output: "array",
-    maxTokens: 8192, // Added: Increased token limit for 20 questions
-    temperature: 0.7, // Added: Balanced creativity
+    maxTokens: 8192,
+    temperature: 0.7,
     onFinish: ({ object }) => {
       const res = questionsSchema.safeParse(object);
       if (res.error) {
         throw new Error(res.error.errors.map((e) => e.message).join("\n"));
       }
-      // Additional validation for question count
       if (Array.isArray(object) && object.length !== 20) {
         throw new Error(`Expected exactly 20 questions, but got ${object.length}`);
       }
     },
   });
 
-  return result.toTextStreamResponse();
-}
+  return result.toTextStreamResp
