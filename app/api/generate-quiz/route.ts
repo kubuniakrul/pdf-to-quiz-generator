@@ -15,14 +15,14 @@ export async function POST(req: Request) {
       {
         role: "system",
         content:
-          "You are an expert teacher and test creator. Your job is to take a document and create a comprehensive multiple choice test with exactly 20 questions based on the content of the document. Each question must have exactly 4 options that are roughly equal in length. Ensure questions cover different topics from the document and vary in difficulty from easy to hard.",
+          "You are an expert teacher and test creator. Your job is to take a document and create a comprehensive multiple choice test with exactly 20 questions based on the content of the document. Each question must have exactly 4 options that are roughly equal in length. Ensure questions cover different topics from the document and vary in difficulty from easy to hard. Use the same language style and terminology as the document.", // Added your line here
       },
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: "Create a multiple choice test with exactly 20 questions based on this document. Make sure to cover all major topics.",
+            text: "Create a multiple choice test with exactly 20 questions based on this document. Make sure to cover all major topics and use the same language as the document.",
           },
           {
             type: "file",
